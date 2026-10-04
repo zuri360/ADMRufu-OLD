@@ -278,6 +278,8 @@ root_pass () {
 
 pid_inst(){
   v_node="$(which nodejs)" && v_node=$(ls -l "$v_node"|awk -F '/' '{print $NF}'|awk '{print $NF}')
+  # si nodejs no esta instalado, v_node queda vacio y ${inst[$v_node]} da "bad array subscript"
+  [[ -z $v_node ]] && v_node="node"
   proto="dropbear python stunnel4 v2ray $v_node badvpn squid ttdns php ws-epro aToken"
   portas=$(lsof -V -i -P -n | grep -v "ESTABLISHED" |grep -v "COMMAND")
   for list in $proto; do
