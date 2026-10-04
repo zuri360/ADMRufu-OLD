@@ -280,11 +280,11 @@ pid_inst(){
   v_node="$(which nodejs)" && v_node=$(ls -l "$v_node"|awk -F '/' '{print $NF}'|awk '{print $NF}')
   # si nodejs no esta instalado, v_node queda vacio y ${inst[$v_node]} da "bad array subscript"
   [[ -z $v_node ]] && v_node="node"
-  proto="dropbear python stunnel4 v2ray $v_node badvpn squid ttdns php ws-epro aToken"
+  proto="dropbear python stunnel4 $v_node badvpn ttdns php ws-epro aToken"
   portas=$(lsof -V -i -P -n | grep -v "ESTABLISHED" |grep -v "COMMAND")
   for list in $proto; do
     case $list in
-      ws-epro|dropbear|stunnel4|v2ray|badvpn|squid|php|aToken|"$v_node") portas2=$(echo "$portas"|grep -w "LISTEN"|grep -w "$list") && [[ $(echo "${portas2}"|grep "$list") ]] && inst[$list]="\033[1;32m[ON] " || inst[$list]="\033[1;31m[OFF]";;
+      ws-epro|dropbear|stunnel4|badvpn|php|aToken|"$v_node") portas2=$(echo "$portas"|grep -w "LISTEN"|grep -w "$list") && [[ $(echo "${portas2}"|grep "$list") ]] && inst[$list]="\033[1;32m[ON] " || inst[$list]="\033[1;31m[OFF]";;
       python) portas2=$(echo "$portas"|grep -w "LISTEN"|grep "$list") && [[ $(echo "${portas2}"|grep "$list") ]] && inst[$list]="\033[1;32m[ON] " || inst[$list]="\033[1;31m[OFF]";;
       ttdns) portas2=$(echo "$portas"|grep -w "$list") && [[ $(echo "${portas2}"|grep "$list") ]] && inst[$list]="\033[1;32m[ON] " || inst[$list]="\033[1;31m[OFF]";;
     esac
@@ -319,72 +319,68 @@ if [[ $(cat ${ADM_tmp}/style|grep -w "port2"|awk '{print $2}') = "1" ]] ; then
 fi
 echo -e "\e[0m\e[31m================ \e[1;33mMENU DE PROTOCOLOS\e[0m\e[31m =================\e[0m"
 echo -ne "$(msg -verd "  [1]")$(msg -verm2 ">") $(msg -azu "DROPBEAR      ${inst[dropbear]}")"
-echo -e "$(msg -verd "  [8]")$(msg -verm2 ">") $(msg -azu "SLOWDNS       ${inst[ttdns]}")"
+echo -e "$(msg -verd "  [6]")$(msg -verm2 ">") $(msg -azu "SLOWDNS       ${inst[ttdns]}")"
 
 echo -ne "$(msg -verd "  [2]")$(msg -verm2 ">") $(msg -azu "SOCKS PYTHON  ${inst[python]}")"
-echo -e "$(msg -verd "  [9]")$(msg -verm2 ">") $(msg -azu "PROTOCOLOS UDP${inst[UDPS]}")"
+echo -e "$(msg -verd "  [7]")$(msg -verm2 ">") $(msg -azu "PROTOCOLOS UDP${inst[UDPS]}")"
 
 echo -ne "$(msg -verd "  [3]")$(msg -verm2 ">") $(msg -azu "SSL           ${inst[stunnel4]}")"
-echo -e "$(msg -verd " [10]")$(msg -verm2 ">") $(msg -azu "WS-EPRO       ${inst["ws-epro"]}")"
+echo -e "$(msg -verd "  [8]")$(msg -verm2 ">") $(msg -azu "WS-EPRO       ${inst["ws-epro"]}")"
 
-echo -e "$(msg -verd "  [4]")$(msg -verm2 ">") $(msg -azu "V2RAY         ${inst[v2ray]}")"
 
-echo -e "$(msg -verd "  [5]")$(msg -verm2 ">") $(msg -azu "OVER WEBSOCKET${inst[$v_node]}")"
-echo -e "$(msg -verd "  [6]")$(msg -verm2 ">") $(msg -azu "BADVPN-UDP    ${inst[badvpn]}")"
-echo -e "$(msg -verd "  [7]")$(msg -verm2 ">") $(msg -azu "SQUID         ${inst[squid]}")"
+echo -e "$(msg -verd "  [4]")$(msg -verm2 ">") $(msg -azu "OVER WEBSOCKET${inst[$v_node]}")"
+echo -e "$(msg -verd "  [5]")$(msg -verm2 ">") $(msg -azu "BADVPN-UDP    ${inst[badvpn]}")"
 
 echo -e "\e[31m================== \e[1;33mOTROS  PROGRMAS\e[0m\e[31m ==================\e[0m"
-echo -ne "$(msg -verd " [11]")$(msg -verm2 ">") $(msg -azu "CHEKUS-ONLIAPP${inst[php]}")"
-echo -e "$(msg -verd " [12]")$(msg -verm2 ">") $(msg -azu "AUTH-TOKEN    ${inst[aToken]}")"
+echo -ne "$(msg -verd "  [9]")$(msg -verm2 ">") $(msg -azu "CHEKUS-ONLIAPP${inst[php]}")"
+echo -e "$(msg -verd " [10]")$(msg -verm2 ">") $(msg -azu "AUTH-TOKEN    ${inst[aToken]}")"
 
 echo -e "\e[31m============== \e[1;33mCONFIGURACIONES RAPIDAS\e[0m\e[31m ==============\e[0m"
-echo -ne "$(msg -verd " [13]")$(msg -verm2 ">") $(msg -azu "BANNER SSH")"
-echo -e "$(msg -verd "          [18]")$(msg -verm2 ">") $(msg -azu "ACELERACION TCPBBR")"
+echo -ne "$(msg -verd " [11]")$(msg -verm2 ">") $(msg -azu "BANNER SSH")"
+echo -e "$(msg -verd "          [16]")$(msg -verm2 ">") $(msg -azu "ACELERACION TCPBBR")"
 
-echo -ne "$(msg -verd " [14]")$(msg -verm2 ">") $(msg -azu "REFREES CACHE/RAM") $(crontab -l 2>/dev/null|grep -w "vm.drop_caches=3" > /dev/null && echo -e "\033[1;32m◉ " || echo -e "\033[1;31m○ ")"
-echo -e "$(msg -verd "[19]")$(msg -verm2 ">") $(msg -azu "CAMBIAR PASS ROOT")"
+echo -ne "$(msg -verd " [12]")$(msg -verm2 ">") $(msg -azu "REFREES CACHE/RAM") $(crontab -l 2>/dev/null|grep -w "vm.drop_caches=3" > /dev/null && echo -e "\033[1;32m◉ " || echo -e "\033[1;31m○ ")"
+echo -e "$(msg -verd "[17]")$(msg -verm2 ">") $(msg -azu "CAMBIAR PASS ROOT")"
 
-echo -ne "$(msg -verd " [15]")$(msg -verm2 ">") $(msg -azu "MEMORIA SWAP")  $([[ $(cat /proc/swaps | wc -l) -le 1 ]] && echo -e "\033[1;31m○ " || echo -e "\033[1;32m◉ ")"
-echo -e "$(msg -verd "    [20]")$(msg -verm2 ">") $(msg -azu "ACTIVAR ACCESO ROOT")"
+echo -ne "$(msg -verd " [13]")$(msg -verm2 ">") $(msg -azu "MEMORIA SWAP")  $([[ $(cat /proc/swaps | wc -l) -le 1 ]] && echo -e "\033[1;31m○ " || echo -e "\033[1;32m◉ ")"
+echo -e "$(msg -verd "    [18]")$(msg -verm2 ">") $(msg -azu "ACTIVAR ACCESO ROOT")"
 
-echo -ne "$(msg -verd " [16]")$(msg -verm2 ">") $(msg -azu "CONFIGURAR IP DNS")  "
-echo -e "$(msg -verd " [21]")$(msg -verm2 ">") $(msg -azu "INTERFACES MENUES")"
+echo -ne "$(msg -verd " [14]")$(msg -verm2 ">") $(msg -azu "CONFIGURAR IP DNS")  "
+echo -e "$(msg -verd " [19]")$(msg -verm2 ">") $(msg -azu "INTERFACES MENUES")"
 
-echo "$(msg -verd " [17]")$(msg -verm2 ">") $(msg -azu "GEN DOMI/CERT-SSL") $([[ -z $(ls "${ADM_crt}") ]] && echo -e "\033[1;31m○ " || echo -e "\033[1;32m◉ ")"
+echo "$(msg -verd " [15]")$(msg -verm2 ">") $(msg -azu "GEN DOMI/CERT-SSL") $([[ -z $(ls "${ADM_crt}") ]] && echo -e "\033[1;31m○ " || echo -e "\033[1;32m◉ ")"
 
 msg -bar
-echo -e "$(msg -verd " [22]") $(msg -verm2 ">") $(msg -blu "ADMINISTRADOR DE ARCHIVOS WEB")"
-echo -e "$(msg -verd " [23]") $(msg -verm2 ">") $(msg -teal "HERRAMIENTAS y EXTRAS")"
+echo -e "$(msg -verd " [20]") $(msg -verm2 ">") $(msg -blu "ADMINISTRADOR DE ARCHIVOS WEB")"
+echo -e "$(msg -verd " [21]") $(msg -verm2 ">") $(msg -teal "HERRAMIENTAS y EXTRAS")"
 msg -bar
-echo -ne "$(msg -verd "  [0]") $(msg -verm2 ">") " && msg -bra "   \033[1;41m VOLVER \033[0m $(msg -verd "       [24]") $(msg -verm2 ">") $(msg -azu AUTO-INICIAR) ${AutoRun}" 
+echo -ne "$(msg -verd "  [0]") $(msg -verm2 ">") " && msg -bra "   \033[1;41m VOLVER \033[0m $(msg -verd "       [22]") $(msg -verm2 ">") $(msg -azu AUTO-INICIAR) ${AutoRun}" 
 msg -bar
-selection=$(selection_fun 24)
+selection=$(selection_fun 22)
 case $selection in
   0)return 0;;
   1)dropBear;;
   2)socksPY;;
   3)Stunnel;;
-  4)${ADM_inst}/v2ray.sh;;
-  5)${ADM_inst}/ws-cdn.sh;;
-  6)${ADM_inst}/budp.sh;;
-  7)${ADM_inst}/squid.sh;;
-  8)Slowdns;;
-  9)protocolsUDP;;
-  10)epro-ws;;
-  11)${ADM_inst}/chekuser.sh;;
-  12)aToken-mng;;
-  13)banner;;
-  14)cache_ram;;
-  15)${ADM_inst}/swapfile.sh;;
-  16)${ADM_inst}/confDNS.sh;;
-  17)${ADM_inst}/cert.sh;;
-  18)${ADM_inst}/tcpbbr.sh;;
-  19)root_pass;;
-  20)root_pass 1;;
-  21)conf_menu;;
-  22)${ADM_inst}/filebrowser.sh;;
-  23)${ADMRufu}/tool_extras.sh;;
-  24)fun_autorun;;
+  4)${ADM_inst}/ws-cdn.sh;;
+  5)${ADM_inst}/budp.sh;;
+  6)Slowdns;;
+  7)protocolsUDP;;
+  8)epro-ws;;
+  9)${ADM_inst}/chekuser.sh;;
+  10)aToken-mng;;
+  11)banner;;
+  12)cache_ram;;
+  13)${ADM_inst}/swapfile.sh;;
+  14)${ADM_inst}/confDNS.sh;;
+  15)${ADM_inst}/cert.sh;;
+  16)${ADM_inst}/tcpbbr.sh;;
+  17)root_pass;;
+  18)root_pass 1;;
+  19)conf_menu;;
+  20)${ADM_inst}/filebrowser.sh;;
+  21)${ADMRufu}/tool_extras.sh;;
+  22)fun_autorun;;
 esac
 }
 
