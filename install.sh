@@ -242,7 +242,7 @@ check_deps(){
   for par in unzip:unzip zip:zip lsof:lsof at:at bc:bc jq:jq curl:curl wget:wget \
              nano:nano crontab:cron netstat:net-tools screen:screen socat:socat \
              python3:python3 iptables:iptables cmake:cmake make:make gcc:gcc \
-             node:nodejs npm:npm; do
+             node:nodejs npm:npm rsyslogd:rsyslog; do
     cmd=${par%%:*}; pkg=${par#*:}
     command -v $cmd &>/dev/null || falta+=($pkg)
   done
@@ -281,6 +281,10 @@ check_deps(){
     fi
   done
   systemctl enable --now atd cron &>/dev/null
+  # /var/log/auth.log lo escribe rsyslog; sin el, ONLI no cuenta Dropbear
+  systemctl enable --now rsyslog &>/dev/null
+  [[ ! -e /var/log/auth.log ]] && touch /var/log/auth.log && chmod 640 /var/log/auth.log
+  systemctl restart rsyslog &>/dev/null
   sleep 1
 }
 
