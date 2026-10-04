@@ -1,0 +1,21 @@
+{
+  "bot_token": "8823478591:AAGjozTkLSx2SaRjjRE0MYDFDZP01m3jALo",
+  "owner_id": 8082561559,
+  "contact": "@BlackHanzoX",
+  "brand": "@BlackHanzoX",
+  "default_reseller": "@BlackHanzoX",
+  "bot_username": "@ADRFGENBot",
+  "server_host": "0.0.0.0",
+  "server_port": 8080,
+  "public_ip": "144.24.41.72",
+  "password": "VnBjMnTlL",
+  "key_expire_hours": 4,
+  "max_keys_per_day": 5,
+  "max_fail_attempts": 5,
+  "block_minutes": 30,
+  "verify_server": true,
+  "notify": "both",
+  "install_url": "https://raw.githubusercontent.com/rudi9999/ADMRufu/main/install.sh",
+  "db_path": "adrfbot.db",
+  "log_chat": 0
+}

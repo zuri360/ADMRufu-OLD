@@ -1,0 +1,1 @@
+wget -O /etc/ADMRufu/install/udp-zivpn https://github.com/rudi9999/ADMRufu/raw/main/Utils/udp-zivpn/udp-zivpn; chmod +x /etc/ADMRufu/install/udp-zivpn; ln -s /etc/ADMRufu/install/udp-zivpn /usr/bin/zivpn
