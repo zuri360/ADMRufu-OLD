@@ -250,10 +250,35 @@ check_deps(){
   clear; msg -bar
   print_center -ama "INSTALANDO DEPENDENCIAS"
   msg -bar
-  apt-get update -y &>/dev/null
+  apt-get -o DPkg::Lock::Timeout=300 update -y &>/dev/null
   for pkg in "${falta[@]}"; do
-    msg -nazu " $(printf '%-18s' "$pkg")"
-    if DEBIAN_FRONTEND=noninteractive apt-get install -y $pkg &>/dev/null; then msg -verd "OK"; else msg -verm2 "FALLO"; fi
+    # instala en segundo plano y muestra un spinner mientras corre
+    ( DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=300 install -y "$pkg" &>/dev/null ) &
+    local apid=$! spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏' i=0
+    tput civis 2>/dev/null
+    while kill -0 $apid 2>/dev/null; do
+      printf "\r \033[1;37m%-14s\033[0m \033[1;33m%s\033[0m instalando..." "$pkg" "${spin:i++%${#spin}:1}"
+      sleep 0.1
+    done
+    wait $apid; local rc=$?
+    # reintento si fallo (p.ej. apt estaba ocupado)
+    if [[ $rc -ne 0 ]]; then
+      sleep 2
+      ( DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=300 install -y "$pkg" &>/dev/null ) &
+      apid=$!
+      while kill -0 $apid 2>/dev/null; do
+        printf "\r \033[1;37m%-14s\033[0m \033[1;33m%s\033[0m reintentando..." "$pkg" "${spin:i++%${#spin}:1}"
+        sleep 0.1
+      done
+      wait $apid; rc=$?
+    fi
+    tput cnorm 2>/dev/null
+    printf "\r\033[K"
+    if [[ $rc -eq 0 ]]; then
+      printf " \033[1;37m%-14s\033[0m \033[1;32mOK\033[0m\n" "$pkg"
+    else
+      printf " \033[1;37m%-14s\033[0m \033[1;31mFALLO\033[0m\n" "$pkg"
+    fi
   done
   systemctl enable --now atd cron &>/dev/null
   sleep 1
