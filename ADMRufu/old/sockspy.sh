@@ -117,6 +117,9 @@ while [[ -z $porta_socket ]]; do
     if [[ $1 = "PPriv" ]]; then
         py="python3"
         IP=$(fun_ip)
+    elif [[ $1 = "PDirect" ]]; then
+        # PDirect.py fue portado a Python 3 (Ubuntu 22/24 ya no trae python2)
+        py="python3"
     elif [[ $1 = "PGet" ]]; then
         echo "master=NetVPS" > ${ADM_tmp}/pwd.pwd
         while read service; do
@@ -170,7 +173,20 @@ WantedBy=multi-user.target" > /etc/systemd/system/python.$porta_socket.service
         ufw allow $ufww/tcp > /dev/null 2>&1
     done
     msg -bar
-    print_center -verd "PYTHON INICIADO CON EXITO!!!"
+    sleep 2
+    if [[ $(systemctl is-active python.$porta_socket) = "active" ]]; then
+        print_center -verd "PYTHON INICIADO CON EXITO!!!"
+    else
+        print_center -verm2 "PYTHON NO PUDO INICIAR"
+        [[ ! -x /usr/bin/$py ]] && print_center -ama "No existe /usr/bin/$py en este sistema"
+        print_center -ama "Revisa con: journalctl -u python.$porta_socket -n 20"
+        systemctl disable python.$porta_socket &>/dev/null
+        systemctl stop python.$porta_socket &>/dev/null
+        rm -f /etc/systemd/system/python.$porta_socket.service
+        msg -bar
+        enter
+        return
+    fi
     msg -bar
     sleep 3
 }
