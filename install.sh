@@ -215,7 +215,7 @@ dropBear(){ usar_bin dropBear Utils/dropBear/dropBear; return 1; }
 epro-ws(){ usar_bin epro-ws Utils/epro-ws/epro-ws; return 1; }
 aToken-mng(){ usar_bin aToken-mng Utils/aToken/aToken-mng; return 1; }
 
-export -f redirigir_repo bajar_url usar_bin socksPY Slowdns Stunnel banner dropBear epro-ws aToken-mng
+export -f bajar_url usar_bin socksPY Slowdns Stunnel banner dropBear epro-ws aToken-mng
 
 
 # Los scripts de old/ traen enlaces al repo de rudi9999 (Utils/ y online/).
@@ -234,6 +234,7 @@ redirigir_repo(){
       "$f"
   done
 }
+export -f redirigir_repo
 
 # Dependencias que instalaba el install.sh original (solo las que falten)
 check_deps(){
@@ -249,20 +250,10 @@ check_deps(){
   clear; msg -bar
   print_center -ama "INSTALANDO DEPENDENCIAS"
   msg -bar
-  # esperar hasta 5 min si apt esta ocupado (unattended-upgrades)
-  apt-get -o DPkg::Lock::Timeout=300 update -y &>/dev/null
+  apt-get update -y &>/dev/null
   for pkg in "${falta[@]}"; do
     msg -nazu " $(printf '%-18s' "$pkg")"
-    if DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=300 install -y $pkg &>/dev/null; then
-      msg -verd "OK"
-    else
-      sleep 3
-      if DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=300 install -y $pkg &>/dev/null; then
-        msg -verd "OK"
-      else
-        msg -verm2 "FALLO"
-      fi
-    fi
+    if DEBIAN_FRONTEND=noninteractive apt-get install -y $pkg &>/dev/null; then msg -verd "OK"; else msg -verm2 "FALLO"; fi
   done
   systemctl enable --now atd cron &>/dev/null
   sleep 1
@@ -430,8 +421,8 @@ set_menu(){
     [[ -e /usr/bin/$c && ! -e /usr/bin/$c.original ]] && mv -f /usr/bin/$c /usr/bin/$c.original
     rm -f /usr/bin/$c; ln -s $self /usr/bin/$c
   done
-  echo "Ahora los comandos 'menu' y 'adm' abren $self"
-  echo "(los anteriores quedaron como /usr/bin/menu.original y /usr/bin/adm.original)"
+  [[ $1 != -q ]] && echo "Ahora los comandos 'menu' y 'adm' abren $self"
+  [[ $1 != -q ]] && echo "(los anteriores quedaron como /usr/bin/menu.original y /usr/bin/adm.original)"
 }
 
 if [[ $(id -u) -eq 0 ]]; then
@@ -442,6 +433,8 @@ if [[ $(id -u) -eq 0 ]]; then
     --set-menu)   set_menu; exit;;
   esac
   mkdir -p /etc/ADMRufu/sbin /etc/ADMRufu/source
+  # fija el comando "menu"/"adm" la primera vez, sin pedir --set-menu aparte
+  [[ ! -L /usr/bin/menu || "$(readlink -f /usr/bin/menu)" != /etc/ADMRufu/menu ]] && set_menu -q
   check_deps
   # al abrir el menu se descargan automaticamente los archivos que falten
   descargar_old
