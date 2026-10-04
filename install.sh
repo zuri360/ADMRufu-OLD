@@ -249,10 +249,20 @@ check_deps(){
   clear; msg -bar
   print_center -ama "INSTALANDO DEPENDENCIAS"
   msg -bar
-  apt-get update -y &>/dev/null
+  # esperar hasta 5 min si apt esta ocupado (unattended-upgrades)
+  apt-get -o DPkg::Lock::Timeout=300 update -y &>/dev/null
   for pkg in "${falta[@]}"; do
     msg -nazu " $(printf '%-18s' "$pkg")"
-    if DEBIAN_FRONTEND=noninteractive apt-get install -y $pkg &>/dev/null; then msg -verd "OK"; else msg -verm2 "FALLO"; fi
+    if DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=300 install -y $pkg &>/dev/null; then
+      msg -verd "OK"
+    else
+      sleep 3
+      if DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=300 install -y $pkg &>/dev/null; then
+        msg -verd "OK"
+      else
+        msg -verm2 "FALLO"
+      fi
+    fi
   done
   systemctl enable --now atd cron &>/dev/null
   sleep 1
