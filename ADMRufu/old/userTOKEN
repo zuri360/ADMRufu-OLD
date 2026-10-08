@@ -36,6 +36,7 @@ data_user(){
 		fecha=$(chage -l "$u"|sed -n '4p'|awk -F ': ' '{print $2}')
 		tmp_file="${ADM_user:-/etc/ADMRufu/user}/userTMP/users/$u"
 		[[ -f "$tmp_file" ]] && fecha="$(cat "$tmp_file")min"
+		sin_fecha='[X]'; [[ -f "$tmp_file" ]] && sin_fecha='[0]'
 
 		mes_dia=$(echo $fecha|awk -F ',' '{print $1}'|sed 's/ //g')
 		ano=$(echo $fecha|awk -F ', ' '{printf $2}'|cut -c 3-)
@@ -54,8 +55,8 @@ data_user(){
 
 		echo -ne "  $(msg -verd "$i)")$(msg -verm2 "-") $(msg -azu "${pass}")"
 		if [[ $(echo $fecha|awk '{print $2}') = "" ]]; then
-			exp="$(printf '%8s%-2s' '[X]')"
-			exp+="$(printf '%-6s' '[X]')"
+			exp="$(printf '%8s%-2s' "$sin_fecha")"
+			exp+="$(printf '%-6s' "$sin_fecha")"
 			echo " $(msg -verm2 "$fecha")$(msg -verd "$exp")$(echo -e "$stat")"	
 		else
 			if [[ $(date +%s) -gt $(date '+%s' -d "${fecha}") ]]; then
