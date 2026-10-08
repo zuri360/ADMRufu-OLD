@@ -456,6 +456,8 @@ backup(){
 		sleep 2
 		local userback
 		for u in `echo ${all_name[@]}`; do
+      # los usuarios temporales no se respaldan (se borran solos)
+      [[ -f "${ADM_user}/userTMP/users/$u" ]] && continue
       dat=$(echo "$all_user"|grep -w "$u"|cut -d ':' -f5)
       Limit_mode=$(echo "$dat"|cut -d ',' -f1)
       case $Limit_mode in
@@ -464,7 +466,11 @@ backup(){
             *)pass=$(echo "$dat"|cut -d ',' -f2);;
       esac
 			fecha=$(chage -l "$u"|sed -n '4p'|awk -F ': ' '{print $2}')
-			EXPTIME="$(($(($(date '+%s' -d "${fecha}") - $(date +%s))) / 86400))"
+			if [[ "$fecha" = "never" ]]; then
+				EXPTIME="never"
+			else
+				EXPTIME="$(($(($(date '+%s' -d "${fecha}") - $(date +%s))) / 86400))"
+			fi
 			stat=$(passwd --status $u|cut -d ' ' -f2)
       userback+="$u|$pass|$EXPTIME|$dat|$stat\n"
 		done
@@ -510,17 +516,23 @@ backup(){
       user=$(echo $line|cut -d '|' -f1)
       pass=$(echo $line|cut -d '|' -f2)
 
-      dias=$(( $(echo $line|cut -d '|' -f3) + 1 ))
-
-      if [[ "$dias" -lt 1 ]]; then dias=0 ;fi
+      [[ -z "$user" ]] && continue
+      exp_raw=$(echo $line|cut -d '|' -f3)
+      if [[ "$exp_raw" = "never" ]]; then
+        exp_opts=""
+      else
+        dias=$(( exp_raw + 1 ))
+        if [[ "$dias" -lt 1 ]]; then dias=0 ;fi
+        valid=$(date '+%C%y-%m-%d' -d " +$dias days")
+        exp_opts="-e ${valid} -K PASS_MAX_DAYS=$dias"
+      fi
 
       dat=$(echo $line|cut -d '|' -f4)
       stat=$(echo $line|cut -d '|' -f5)
 
       if [[ $(echo "${all_name[@]}"|grep "$user") = "" ]]; then
-        valid=$(date '+%C%y-%m-%d' -d " +$dias days")
         msg -nama " $user"
-        if useradd -M -s /bin/false -e ${valid} -K PASS_MAX_DAYS=$dias -p $(openssl passwd -6 $pass) -c $dat $user ; then
+        if useradd -M -s /bin/false ${exp_opts} -p $(openssl passwd -6 $pass) -c "$dat" $user ; then
           [[ "$stat" = "P" ]] && usermod -U $user || usermod -L $user
           msg -verd " $(fun_trans "Restaurado")"
         else
@@ -531,7 +543,7 @@ backup(){
           userpid=$(ps -u $user |awk {'print $1'})
           kill "$userpid" 2>/dev/null
           userdel --force $user
-          if useradd -M -s /bin/false -e ${valid} -K PASS_MAX_DAYS=$dias -p $(openssl passwd -6 $pass) -c $dat $user ; then
+          if useradd -M -s /bin/false ${exp_opts} -p $(openssl passwd -6 $pass) -c "$dat" $user ; then
             [[ "$stat" = "P" ]] && usermod -U $user || usermod -L $user
             msg -verd " $(fun_trans "Restaurado")"
           else
