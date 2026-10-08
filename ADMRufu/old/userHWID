@@ -34,6 +34,8 @@ data_user(){
     fix_hwid_token=$(echo "${cat_users}"|grep -w "$u"|awk -F ':' '{print $5}'|cut -d ',' -f1) && [[ "${fix_hwid_token}" != @(hwid) ]] && continue
 
 		fecha=$(chage -l "$u"|sed -n '4p'|awk -F ': ' '{print $2}')
+		tmp_file="${ADM_user:-/etc/ADMRufu/user}/userTMP/users/$u"
+		[[ -f "$tmp_file" ]] && fecha="$(cat "$tmp_file")min"
 
 		mes_dia=$(echo $fecha|awk -F ',' '{print $1}'|sed 's/ //g')
 		ano=$(echo $fecha|awk -F ', ' '{printf $2}'|cut -c 3-)
@@ -225,128 +227,110 @@ new_user(){
 }
 #===================================
 
-#======CREAR USUARIO TEMPORAL======
+#======CREAR CLIENTE HWID TEMPORAL======
+userTMP(){
+	local cliente hwid tmp pass osl_v tmp_dir script
+	clear
+	msg -bar
+	print_center -ama "$(fun_trans "CREAR CLIENTE HWID TEMPORAL")"
+	print_center -ama "Escriba 0 para volver"
+	msg -bar
 
-mktmpuser(){
-	while [[ -z $name ]]; do
-		msg -ne " Nombre del usuario: "
-		read name
-		if [[ -z $name ]]; then
-			tput cuu1 && tput dl1
-			msg -ama " Escriva un nombre de usuario"
-			sleep 2
-			tput cuu1 && tput dl1
-			unset name
-			continue
+	while true; do
+		msg -ne "$(fun_trans "Nombre De cliente"): "
+		read cliente || return
+		cliente="$(echo $cliente|sed 'y/áÁàÀãÃâÂéÉêÊíÍóÓõÕôÔúÚñÑçÇªº/aAaAaAaAeEeEiIoOoOoOuUnNcCao/' 2>/dev/null || echo $cliente)"
+		cliente="$(echo $cliente|sed -e 's/[^a-z0-9 -]//ig')"
+		if [[ -z $cliente ]]; then
+			err_fun 1 && continue
+		elif [[ "${cliente}" = "0" ]]; then
+			return
+		elif [[ "${#cliente}" -lt "4" ]]; then
+			err_fun 2 && continue
+		elif [[ "${#cliente}" -gt "20" ]]; then
+			err_fun 3 && continue
+		elif grep -q ":hwid,${cliente}:" /etc/passwd; then
+			err_fun 14 && continue
 		fi
+		break
 	done
 
-	if cat /etc/passwd |grep $name: |grep -vi [a-z]$name |grep -v [0-9]$name > /dev/null ; then
-		tput cuu1 && tput dl1
-		msg -verm2 " El usuario $name ya existe"
-		sleep 2
-		tput cuu1 && tput dl1
+	while true; do
+		msg -ne "$(fun_trans "HWID")"
+		read -p ": " hwid || return
+		hwid="$(echo $hwid|sed 'y/áÁàÀãÃâÂéÉêÊíÍóÓõÕôÔúÚñÑçÇªº/aAaAaAaAeEeEiIoOoOoOuUnNcCao/' 2>/dev/null || echo $hwid)"
+		if [[ -z $hwid ]]; then
+			err_fun 4 && continue
+		elif [[ "${hwid}" = "0" ]]; then
+			return
+		elif [[ "${#hwid}" -lt "10" ]]; then
+			err_fun 5 && continue
+		elif [[ "${#hwid}" -gt "40" ]]; then
+			err_fun 6 && continue
+		elif id "$hwid" &>/dev/null; then
+			err_fun 14 && continue
+		fi
+		break
+	done
+
+	while true; do
+		msg -ne "$(fun_trans "Duracion en minutos")"
+		read -p ": " tmp || return
+		if [[ -z "$tmp" ]]; then
+			err_fun 7 && continue
+		elif [[ "$tmp" = "0" ]]; then
+			return
+		elif [[ "$tmp" != +([0-9]) ]]; then
+			err_fun 8 && continue
+		fi
+		break
+	done
+
+	# misma logica que add_user: usuario y contraseña = HWID, comentario = hwid,cliente
+	osl_v=$(openssl version|awk '{print $2}')
+	osl_v=${osl_v:0:5}
+	if [[ $osl_v = '1.1.1' ]]; then
+		pass=$(openssl passwd -6 "$hwid")
+	else
+		pass=$(openssl passwd -1 "$hwid")
+	fi
+
+	if ! useradd -M -s /bin/false -p "${pass}" -c "hwid,${cliente}" "$hwid"; then
+		print_center -verm2 "$(fun_trans "Error, Usuario no creado")"
+		msg -bar
+		sleep 3
 		return
 	fi
 
-	while [[ -z $pass ]]; do
-		msg -ne " Contraseña: "
-		read pass
-		if [[ -z $pass ]]; then
-			tput cuu1 && tput dl1
-			msg -ama " Escriva una Contraseña"
-			sleep 2
-			tput cuu1 && tput dl1
-			unset pass
-			continue
-		fi
-	done
+	# guarda los minutos para mostrarlos en la lista
+	tmp_dir="${ADM_user:-/etc/ADMRufu/user}/userTMP/users"
+	mkdir -p "$tmp_dir"
+	echo "$tmp" > "$tmp_dir/$hwid"
 
-	while [[ -z $tmp ]]; do
-		msg -ne " Duracion en minutos: "
-		read tmp
-		if [[ -z $tmp ]]; then
-			tput cuu1 && tput dl1
-			msg -ama " Escriva un tiempo de duracion"
-			sleep 2
-			tput cuu1 && tput dl1
-			unset tmp
-			continue
-		fi
-	done
+	# script que borra el cliente al terminar el tiempo
+	script="/tmp/admtmp-$hwid.sh"
+	cat > "$script" <<EOS
+#!/bin/bash
+sleep $(( tmp * 60 ))
+pkill -u "$hwid" &>/dev/null
+userdel --force "$hwid" &>/dev/null
+rm -f "$tmp_dir/$hwid"
+rm -f "$script"
+EOS
+	chmod +x "$script"
+	nohup bash "$script" &>/dev/null &
 
-	if [[ -z $1 ]]; then
-		msg -ne " Aplicar a conf Default [S/N]: "
-		read def
-		if [[ ! "$def" != @(s|S|y|Y) ]]; then
-			echo -e "usuario=$name
-Contraseña=$pass
-Tiempo=$tmp" > ${Default}
-		fi
-	fi
-
-	useradd -M -s /bin/false -p $(openssl passwd -6 $pass) $name
-	#(echo $pass; echo $pass)|passwd $name 2>/dev/null
-	touch /tmp/$name
-
-	timer=$(( $tmp * 60 ))
-	timer2="'$timer's"
-	echo "#!/bin/bash
-sleep $timer2
-kill"' $(ps -u '"$name |awk '{print"' $tmp'"}') 1> /dev/null 2> /dev/null
-userdel --force $name
-rm -rf /tmp/$name
-exit" > /tmp/$name
-
-	chmod 777 /tmp/$name
-	touch /tmp/cmd
-	chmod 777 /tmp/cmd
-	echo "nohup /tmp/$name & >/dev/null" > /tmp/cmd
-	/tmp/cmd 2>/dev/null 1>/dev/null
-	rm -rf /tmp/cmd
-
-	title "USUARIO TEMPORAL CREADO"
-	echo -e " $(msg -verm2 "IP:        ") $(msg -ama "$(fun_ip)")"
-	echo -e " $(msg -verm2 "Usuario:   ") $(msg -ama "$name")"
-	echo -e " $(msg -verm2 "Contraseña:") $(msg -ama "$pass")"
-	echo -e " $(msg -verm2 "Duracion:  ") $(msg -ama "$tmp minutos")"
+	clear
 	msg -bar
-	read foo
-	return
-}
-
-userTMP(){
-	tmp_f="${ADM_user}/userTMP" && [[ ! -d ${tmp_f} ]] && mkdir ${tmp_f}
-	Default="${tmp_f}/Default"
-	if [[ ! -e ${Default} ]]; then
-		echo -e "usuario=ADMRufu
-Contraseña=ADMRufu
-Tiempo=15" > ${Default}
-	fi
-
-	name="$(cat ${Default}|grep "usuario"|cut -d "=" -f2)"
-	pass="$(cat ${Default}|grep "Contraseña"|cut -d "=" -f2)"
-	tmp="$(cat ${Default}|grep "Tiempo"|cut -d "=" -f2)"
-
-	title "CONF DE USUARIO TEMPORAL"
-	print_center -teal "Usuario Default"
-	msg -bar3
-	echo -e " $(msg -verm2 "IP:        ") $(msg -ama "$(fun_ip)")"
-	echo -e " $(msg -verm2 "Usuario:   ") $(msg -ama "$name")"
-	echo -e " $(msg -verm2 "Contraseña:") $(msg -ama "$pass")"
-	echo -e " $(msg -verm2 "Duracion:  ") $(msg -ama "$tmp minutos")"
+	print_center -verd "$(fun_trans "Cliente Temporal Creado con Exito")"
 	msg -bar
-	menu_func "APLICAR CONF DEFAULT" "CONF PERSONALIZADA"
-	back
-	opcion=$(selection_fun 2)
-	case $opcion in
-		1)mktmpuser "def";;
-		2)unset name
-		  unset pass
-		  unset tmp
-		  mktmpuser;;
-		0)return;;
-	esac
+	msg -ne " $(fun_trans "IP del Servidor"): " && msg -ama "    $(fun_ip)"
+	msg -ne " $(fun_trans "Cliente"): " && msg -ama "            $cliente"
+	msg -ne " $(fun_trans "Duracion"): " && msg -ama "           $tmp minutos"
+	msg -ne " $(fun_trans "HWID"): " && msg -ama "$hwid"
+	msg -bar
+	print_center -ama "►► Presione enter para continuar ◄◄"
+	read
 }
 #===========================================
 
@@ -355,6 +339,7 @@ rm_user(){
   #nome
   if userdel --force "$1" ; then
     sed -i "/$1/d" ${ADM_user}/passwd
+    rm -f "${ADM_user:-/etc/ADMRufu/user}/userTMP/users/$1"
   	print_center -verd "[$(fun_trans "Removido")]"
   else
   	print_center -verm "[$(fun_trans "No Removido")]"
@@ -857,6 +842,7 @@ do
 	title -ama "ADMINISTRACION DE USUARIOS HWID"
 
 	menu_func "NUEVO CLIENTE HWID ✏️ " \
+"CREAR CLIENTE TEMPORAL✏️." \
 "$(msg -verm2 "REMOVER CLIENTE") 🗑 " \
 "$(msg -verd "EDITAR/RENOVAR CLIENTE") ♻️" \
 "BLOQ/DESBLOQ CLIENTE 🔒\n$(msg -bar3)" \
@@ -870,20 +856,21 @@ do
 "CAMBIAR A MODO SSH/TOKEN"
 
 	back
-	selection=$(selection_fun 12)
+	selection=$(selection_fun 13)
 	case ${selection} in
 		0)break;;
 		1)new_user;;
-		2)remove_user;;
-		3)renew_user;;
-		4)block_user;;
-		5)detail_user;;
-		6)sshmonitor;;
-		7)limiter;;
-		8)rm_vencidos;;
-		9)eliminar_all;;
-		10)backup;;
-		11)ULK_ALF;;
-    12)USER_MODE && break;;
+		2)userTMP;;
+		3)remove_user;;
+		4)renew_user;;
+		5)block_user;;
+		6)detail_user;;
+		7)sshmonitor;;
+		8)limiter;;
+		9)rm_vencidos;;
+		10)eliminar_all;;
+		11)backup;;
+		12)ULK_ALF;;
+		13)USER_MODE && break;;
 	esac
 done

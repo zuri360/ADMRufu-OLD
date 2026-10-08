@@ -31,6 +31,8 @@ data_user(){
     u=$(echo "$line"|awk -F ':' '{print $1}')
 
     fecha=$(chage -l "$u"|sed -n '4p'|awk -F ': ' '{print $2}')
+    tmp_file="${ADM_user:-/etc/ADMRufu/user}/userTMP/users/$u"
+    [[ -f "$tmp_file" ]] && fecha="$(cat "$tmp_file")min"
 
     mes_dia=$(echo $fecha|awk -F ',' '{print $1}'|sed 's/ //g')
     ano=$(echo $fecha|awk -F ', ' '{printf $2}'|cut -c 3-)
@@ -243,6 +245,7 @@ mktmpuser(){
 	while [[ -z $name ]]; do
 		msg -ne " Nombre del usuario: "
 		read name
+		[[ "$name" = "0" ]] && return
 		if [[ -z $name ]]; then
 			tput cuu1 && tput dl1
 			msg -ama " Escriva un nombre de usuario"
@@ -287,18 +290,11 @@ mktmpuser(){
 		fi
 	done
 
-	if [[ -z $1 ]]; then
-		msg -ne " Aplicar a conf Default [S/N]: "
-		read def
-		if [[ ! "$def" != @(s|S|y|Y) ]]; then
-			echo -e "usuario=$name
-Contraseña=$pass
-Tiempo=$tmp" > ${Default}
-		fi
-	fi
-
-	useradd -M -s /bin/false -p $(openssl passwd -6 $pass) $name
+	useradd -M -s /bin/false -p $(openssl passwd -6 $pass) -c 1,$pass $name
 	#(echo $pass; echo $pass)|passwd $name 2>/dev/null
+	tmp_dir="${ADM_user:-/etc/ADMRufu/user}/userTMP/users"
+	mkdir -p "$tmp_dir"
+	echo "$tmp" > "$tmp_dir/$name"
 	touch /tmp/$name
 
 	timer=$(( $tmp * 60 ))
@@ -307,6 +303,7 @@ Tiempo=$tmp" > ${Default}
 sleep $timer2
 kill"' $(ps -u '"$name |awk '{print"' $tmp'"}') 1> /dev/null 2> /dev/null
 userdel --force $name
+rm -f $tmp_dir/$name
 rm -rf /tmp/$name
 exit" > /tmp/$name
 
@@ -328,37 +325,13 @@ exit" > /tmp/$name
 }
 
 userTMP(){
-	tmp_f="${ADM_user}/userTMP" && [[ ! -d ${tmp_f} ]] && mkdir ${tmp_f}
-	Default="${tmp_f}/Default"
-	if [[ ! -e ${Default} ]]; then
-		echo -e "usuario=ADMRufu
-Contraseña=ADMRufu
-Tiempo=15" > ${Default}
-	fi
-
-	name="$(cat ${Default}|grep "usuario"|cut -d "=" -f2)"
-	pass="$(cat ${Default}|grep "Contraseña"|cut -d "=" -f2)"
-	tmp="$(cat ${Default}|grep "Tiempo"|cut -d "=" -f2)"
-
-	title "CONF DE USUARIO TEMPORAL"
-	print_center -teal "Usuario Default"
-	msg -bar3
-	echo -e " $(msg -verm2 "IP:        ") $(msg -ama "$(fun_ip)")"
-	echo -e " $(msg -verm2 "Usuario:   ") $(msg -ama "$name")"
-	echo -e " $(msg -verm2 "Contraseña:") $(msg -ama "$pass")"
-	echo -e " $(msg -verm2 "Duracion:  ") $(msg -ama "$tmp minutos")"
+	unset name
+	unset pass
+	unset tmp
+	title "CREAR USUARIO TEMPORAL"
+	print_center -ama "Escriba 0 en el nombre para volver"
 	msg -bar
-	menu_func "APLICAR CONF DEFAULT" "CONF PERSONALIZADA"
-	back
-	opcion=$(selection_fun 2)
-	case $opcion in
-		1)mktmpuser "def";;
-		2)unset name
-		  unset pass
-		  unset tmp
-		  mktmpuser;;
-		0)return;;
-	esac
+	mktmpuser
 }
 #===========================================
 
@@ -369,6 +342,7 @@ rm_user(){
   kill -9 $droplim &>/dev/null
   userdel --force "$1" &>/dev/null
   msj=$?
+  rm -f "${ADM_user:-/etc/ADMRufu/user}/userTMP/users/$1"
 }
 
 remove_user(){
