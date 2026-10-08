@@ -1,16 +1,12 @@
 #!/bin/bash
 # =====================================================================
 #  menu.sh - Menu principal ADMRufu (fork) en bash, sin binarios ni licencia
-#  Basado en ADMRufu/old/menu
+#  Repositorio: https://github.com/vpsnet360/ADMRufu  (ADMRufu/old/menu.sh)
 #
-#  Los archivos de old/ se descargan de:
-#    https://github.com/vpsnet360/ADMRufu/tree/main/ADMRufu/old
-#
-#  Uso:
-#    ./menu.sh                  abre el menu (baja lo que falte)
-#    ./menu.sh --actualizar     vuelve a bajar todos los archivos de old/
-#    ./menu.sh --set-menu       los comandos "menu" y "adm" abren este script
-#    ./menu.sh --instalar <dir> copia old/ desde una carpeta local
+#  Este archivo es SOLO el menu. Lo instala install.sh en /etc/ADMRufu/menu
+#  y se abre con los comandos "menu" o "adm".
+#  Las dependencias y la descarga de archivos las hace install.sh.
+#  Si al usar una opcion falta algun archivo de old/, el menu lo baja solo.
 # =====================================================================
 
 # ======================= MODULE (reemplazo) =======================
@@ -120,7 +116,6 @@ in_opcion_down(){
 command -v lolcat &>/dev/null || lolcat(){ cat; }
 
 export -f msg print_center title menu_func back selection_fun del enter in_opcion in_opcion_down
-type lolcat 2>/dev/null | grep -q function && export -f lolcat
 
 # locale UTF-8 para que funcionen los sed con acentos de los scripts
 locale -a 2>/dev/null | grep -qiE '^(c|en_us)\.utf-?8$' && export LC_ALL=C.UTF-8
@@ -129,12 +124,6 @@ locale -a 2>/dev/null | grep -qiE '^(c|en_us)\.utf-?8$' && export LC_ALL=C.UTF-8
 # Archivos de ADMRufu/old que usa el menu (igual que el install original)
 REPO_BASE="https://raw.githubusercontent.com/vpsnet360/ADMRufu/main/ADMRufu"
 REPO_OLD="${REPO_BASE}/old"
-
-ARCHIVOS_OLD="bashrc budp.sh cert.sh chekup.sh chekuser.sh confDNS.sh domain.sh
-filebrowser.sh limitador.sh menu_inst.sh PDirect.py PGet.py POpen.py
-PPriv.py PPub.py slowdns.sh sockspy.sh swapfile.sh tcpbbr.sh
-tool_extras.sh userHWID userSSH userTOKEN userWG.sh
-ws-cdn.sh WS-Proxy.js"
 
 # destino de cada archivo (mismas reglas que verificar_arq del install.sh)
 ruta_arq(){
@@ -215,8 +204,7 @@ dropBear(){ usar_bin dropBear Utils/dropBear/dropBear; return 1; }
 epro-ws(){ usar_bin epro-ws Utils/epro-ws/epro-ws; return 1; }
 aToken-mng(){ usar_bin aToken-mng Utils/aToken/aToken-mng; return 1; }
 
-export -f redirigir_repo bajar_url usar_bin socksPY Slowdns Stunnel banner dropBear epro-ws aToken-mng
-
+export -f bajar_url usar_bin socksPY Slowdns Stunnel banner dropBear epro-ws aToken-mng
 
 # Los scripts de old/ traen enlaces al repo de rudi9999 (Utils/ y online/).
 # Se cambian por tu repo para que las descargas internas
@@ -234,29 +222,7 @@ redirigir_repo(){
       "$f"
   done
 }
-
-# Dependencias que instalaba el install.sh original (solo las que falten)
-check_deps(){
-  local cmd pkg falta=()
-  for par in unzip:unzip zip:zip lsof:lsof at:at bc:bc jq:jq curl:curl wget:wget \
-             nano:nano crontab:cron netstat:net-tools screen:screen socat:socat \
-             python3:python3 iptables:iptables cmake:cmake make:make gcc:gcc \
-             node:nodejs npm:npm; do
-    cmd=${par%%:*}; pkg=${par#*:}
-    command -v $cmd &>/dev/null || falta+=($pkg)
-  done
-  [[ ${#falta[@]} -eq 0 ]] && return
-  clear; msg -bar
-  print_center -ama "INSTALANDO DEPENDENCIAS"
-  msg -bar
-  apt-get update -y &>/dev/null
-  for pkg in "${falta[@]}"; do
-    msg -nazu " $(printf '%-18s' "$pkg")"
-    if DEBIAN_FRONTEND=noninteractive apt-get install -y $pkg &>/dev/null; then msg -verd "OK"; else msg -verm2 "FALLO"; fi
-  done
-  systemctl enable --now atd cron &>/dev/null
-  sleep 1
-}
+export -f redirigir_repo
 
 # ======== [9] PROTOCOLOS UDP (version bash) ========
 # El binario protocolsUDP original exige licencia (/etc/ADMRufuLIC) y se
@@ -382,62 +348,7 @@ SVC
 }
 export -f protocolsUDP
 
-# $1 = "forzar" para volver a bajar todo; si no, baja solo lo que falta
-descargar_old(){
-  local f dst falta=() ok=0 fail=0
-  for f in $ARCHIVOS_OLD; do
-    dst=$(ruta_arq "$f")
-    [[ $1 == forzar || ! -e $dst ]] && falta+=("$f")
-  done
-  [[ ${#falta[@]} -eq 0 ]] && return 0
-  clear
-  msg -bar
-  print_center -ama "DESCARGANDO ARCHIVOS DEL PANEL"
-  print_center -azu "github.com/vpsnet360/ADMRufu"
-  msg -bar
-  for f in "${falta[@]}"; do
-    msg -nazu " $(printf '%-18s' "$f")"
-    if bajar_arq "$f"; then msg -verd "OK"; let ok++; else msg -verm2 "FALLO"; let fail++; fi
-  done
-  msg -bar
-  print_center -verd "Descargados: $ok"
-  [[ $fail -gt 0 ]] && print_center -verm2 "Fallaron: $fail (revisa conexion o el repositorio)"
-  sleep 2
-}
-
-instalar_desde(){
-  local src="$1" f
-  [[ ! -d $src ]] && echo "No existe la carpeta: $src" && exit 1
-  for f in $ARCHIVOS_OLD; do
-    [[ -e $src/$f ]] && cp -f "$src/$f" "$(ruta_arq "$f")" && chmod +x "$(ruta_arq "$f")" && echo " copiado: $(ruta_arq "$f")"
-  done
-}
-
-set_menu(){
-  local self=/etc/ADMRufu/menu
-  [[ "$(readlink -f "$0")" != "$self" ]] && cp -f "$(readlink -f "$0")" $self && chmod +x $self
-  for c in menu adm; do
-    [[ -e /usr/bin/$c && ! -e /usr/bin/$c.original ]] && mv -f /usr/bin/$c /usr/bin/$c.original
-    rm -f /usr/bin/$c; ln -s $self /usr/bin/$c
-  done
-  echo "Ahora los comandos 'menu' y 'adm' abren $self"
-  echo "(los anteriores quedaron como /usr/bin/menu.original y /usr/bin/adm.original)"
-}
-
-if [[ $(id -u) -eq 0 ]]; then
-  mkdir -p /etc/ADMRufu/install /etc/ADMRufu/tmp /etc/ADMRufu/user
-  case $1 in
-    --actualizar) descargar_old forzar; exit;;
-    --instalar)   instalar_desde "$2"; exit;;
-    --set-menu)   set_menu; exit;;
-  esac
-  mkdir -p /etc/ADMRufu/sbin /etc/ADMRufu/source
-  check_deps
-  # al abrir el menu se descargan automaticamente los archivos que falten
-  descargar_old
-  # corrige tambien los archivos que ya estaban instalados
-  redirigir_repo /etc/ADMRufu/install/* /etc/ADMRufu/menu_inst.sh /etc/ADMRufu/tool_extras.sh
-fi
+mkdir -p /etc/ADMRufu/install /etc/ADMRufu/tmp /etc/ADMRufu/user /etc/ADMRufu/sbin /etc/ADMRufu/source 2>/dev/null
 
 # ======================= FIN MODULE =======================
 
