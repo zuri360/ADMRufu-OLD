@@ -321,6 +321,7 @@ exit" > /tmp/$name
 	echo -e " $(msg -verm2 "Contraseña:") $(msg -ama "$pass")"
 	echo -e " $(msg -verm2 "Duracion:  ") $(msg -ama "$tmp minutos")"
 	msg -bar
+	msg -ama "Enter para continuar"
 	read foo
 	return
 }
