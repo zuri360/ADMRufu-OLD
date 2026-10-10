@@ -3,6 +3,8 @@
 # PDirect.py - Socks Python DIRETO (version Python 3)
 # Port del PDirect.py original (Python 2) de ADMRufu.
 # Mismos parametros: -p puerto  -l puerto_local  -r response  -t texto  -c contraseña
+# FIX-SSH: descarta el payload HTTP y solo reenvia al puerto local desde "SSH-"
+#          (OpenSSH rechaza texto previo con "Invalid SSH identification string")
 import socket, threading, select, sys, time, argparse
 
 parser = argparse.ArgumentParser()
@@ -109,6 +111,8 @@ class ConnectionHandler(threading.Thread):
         self.targetClosed = True
         self.client = socClient
         self.client_buffer = b''
+        self.pending = b''
+        self.sshReady = False
         self.server = server
         self.log = 'Connection: ' + str(addr)
 
@@ -133,6 +137,18 @@ class ConnectionHandler(threading.Thread):
     def run(self):
         try:
             self.client_buffer = self.client.recv(BUFLEN)
+
+            # Conexion SSH directa sin payload: no se manda respuesta HTTP
+            if self.client_buffer.startswith(b'SSH-'):
+                self.log += ' - SSH directo'
+                self.connect_target(DEFAULT_HOST)
+                self.target.sendall(self.client_buffer)
+                self.sshReady = True
+                self.client_buffer = b''
+                self.server.printLog(self.log)
+                self.doCONNECT()
+                return
+
             head = self.client_buffer.decode('latin-1')
 
             hostPort = self.findHeader(head, 'X-Real-Host')
@@ -190,9 +206,27 @@ class ConnectionHandler(threading.Thread):
         self.log += ' - CONNECT ' + path
         self.connect_target(path)
         self.client.sendall(RESPONSE)
+        # FIX-SSH: si en el mismo paquete ya vino el "SSH-" del cliente, se rescata
+        self.forwardClient(self.client_buffer)
         self.client_buffer = b''
         self.server.printLog(self.log)
         self.doCONNECT()
+
+    def forwardClient(self, data):
+        # FIX-SSH: hasta ver "SSH-" se descarta todo (payload, split, \r\n sobrantes)
+        if self.sshReady:
+            self.target.sendall(data)
+            return
+        self.pending += data
+        i = self.pending.find(b'SSH-')
+        if i != -1:
+            self.target.sendall(self.pending[i:])
+            self.pending = b''
+            self.sshReady = True
+        elif len(self.pending) > 65536:
+            raise Exception('payload demasiado grande sin SSH-')
+        else:
+            self.pending = self.pending[-3:]
 
     def doCONNECT(self):
         socs = [self.client, self.target]
@@ -211,7 +245,7 @@ class ConnectionHandler(threading.Thread):
                             if in_ is self.target:
                                 self.client.sendall(data)
                             else:
-                                self.target.sendall(data)
+                                self.forwardClient(data)
                             count = 0
                         else:
                             error = True
