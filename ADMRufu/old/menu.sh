@@ -122,7 +122,7 @@ locale -a 2>/dev/null | grep -qiE '^(c|en_us)\.utf-?8$' && export LC_ALL=C.UTF-8
 
 # ======================= DESCARGA DESDE TU REPOSITORIO =======================
 # Archivos de ADMRufu/old que usa el menu (igual que el install original)
-REPO_BASE="https://raw.githubusercontent.com/vpsnet360/ADMRufu/main/ADMRufu"
+REPO_BASE="${ADM_REPO:-https://raw.githubusercontent.com/zuri360/ADMRufu-OLD/main/ADMRufu}"
 REPO_OLD="${REPO_BASE}/old"
 
 # destino de cada archivo (mismas reglas que verificar_arq del install.sh)
@@ -390,7 +390,9 @@ export swap="/swapfile"
 
 #PROCESSADOR
 export _core=$(printf '%-1s' "$(grep -c cpu[0-9] /proc/stat)")
-export _usop=$(printf '%-1s' "$(top -bn1 | awk '/Cpu/ { cpu = "" 100 - $8 "%" }; END { print cpu }')")
+read -r _ _u _n _s _i _w _irq _sirq _st _ < /proc/stat 2>/dev/null
+_usop=$(awk -v t=$((_u+_n+_s+_i+_w+_irq+_sirq+_st)) -v x=$((_i+_w)) 'BEGIN{if(t>0)printf "%.1f%%",100*(t-x)/t; else print "0.0%"}')
+export _usop
 
 #SISTEMA-USO DA CPU-MEMORIA RAM
 export ram1=$(free -h | grep -i mem | awk {'print $2'})
@@ -741,43 +743,52 @@ done
 }
 
 contador(){
-	users=$(cat /etc/passwd|grep 'home'|grep 'false'|grep -v 'syslog'|awk -F ':' '{print $1}')
+	# sin forks: /etc/passwd y /etc/shadow una sola vez + sesiones en bloque
+	local u line exp p2 name now n=0 i=0 conect=0
+	local -A SEXP=() SLOCK=() ISUSER=() SSH_ON=()
+	local -a ULIST=()
+
+	while IFS= read -r line; do
+		[[ "$line" == *home* ]] || continue
+		[[ "$line" == *false* ]] || continue
+		[[ "$line" == *syslog* ]] && continue
+		u=${line%%:*}
+		ISUSER[$u]=1
+		ULIST+=("$u")
+	done < /etc/passwd
+
+	if [[ -r /etc/shadow ]]; then
+		while IFS=: read -r name p2 _ _ _ _ _ exp _; do
+			[[ -n "${ISUSER[$name]+x}" ]] || continue
+			SEXP[$name]="$exp"
+			[[ "$p2" == \$* ]] || SLOCK[$name]=1
+		done < /etc/shadow
+	fi
+
+	local dpids ovpn_log=""
 	dpids=$(droppids)
-	time=$(date +%s)
-	[[ -e /etc/openvpn/openvpn-status.log ]] && ovpn_log=$(cat /etc/openvpn/openvpn-status.log)
+	[[ -e /etc/openvpn/openvpn-status.log ]] && ovpn_log=$(</etc/openvpn/openvpn-status.log)
 
-	#n='0'
-	#i='0'
-	conect='0'
-	for _user in $users; do
-		[[ -z "$(ps -u $_user|grep sshd)" ]] && sqd=0 || sqd=1
-		[[ -z "$(echo $ovpn_log|grep -E ,"$_user",)" ]] && ovp=0 || ovp=1
-        [[ -z "$(echo $dpids|grep -w "$_user")" ]] && drop=0 || drop=1
+	while read -r name comm; do
+		[[ "$comm" == sshd ]] && SSH_ON[$name]=1
+	done < <(ps -eo user:32=,comm= 2>/dev/null)
 
-        conex=$(($sqd + $ovp + $drop))
-        [[ $conex -ne 0 ]] && let conect++
-
-		#if [[ $(chage -l $_user |grep 'Account expires' |awk -F ': ' '{print $2}') != never ]]; then
-		#	[[ $time -gt $(date '+%s' -d "$(chage -l $_user |grep "Account expires" |awk -F ': ' '{print $2}')") ]] && let n++
-		#fi
-
-		#[[ $(passwd --status $_user|cut -d ' ' -f2) = "L" ]] && let i++
-	done
-
-	# original: user-info -a (binario). Version en bash:
-	n=0; i=0
-	for _user in $users; do
-		_exp=$(chage -l $_user 2>/dev/null|grep 'Account expires'|awk -F ': ' '{print $2}')
-		if [[ -n $_exp && $_exp != never ]]; then
-			[[ $time -gt $(date '+%s' -d "$_exp") ]] && let n++
+	now=$(date +%s)
+	for u in "${ULIST[@]}"; do
+		if [[ -n "${SSH_ON[$u]-}" ]] || [[ "$ovpn_log" == *",$u,"* ]] || [[ "$dpids" =~ (^|[[:space:]])$u([[:space:]]|$) ]]; then
+			conect=$((conect+1))
 		fi
-		[[ $(passwd --status $_user|cut -d ' ' -f2) = "L" ]] && let i++
+		exp="${SEXP[$u]}"
+		if [[ -n "$exp" ]] && [[ $now -gt $((exp * 86400)) ]]; then
+			n=$((n+1))
+		fi
+		[[ -n "${SLOCK[$u]-}" ]] && i=$((i+1))
 	done
 
 	_onlin=$(printf '%-7s' "$conect")
 	_userexp=$(printf '%-7s' "$n")
 	_lok=$(printf '%-7s' "$i")
-	_tuser=$(echo "$users"|sed '/^$/d'|wc -l)
+	_tuser="${#ULIST[@]}"
 
 	echo -e " $(msg -verd "ONLI:") $(msg -azu "$_onlin") $(msg -verm2 "EXP:") $(msg -azu "$_userexp") $(msg -teal "LOK:") $(msg -azu "$_lok") $(msg -ama "TOTAL:") $(msg -azu "$_tuser")"
 }
@@ -1113,14 +1124,34 @@ export -f vip_act
 export -f print_center msg title back menu_func selection_fun enter del in_opcion in_opcion_down
 export -f contador pid_inst systen_info reiniciar_vps run_file bajar_arq ruta_arq
 export REPO_OLD REPO_BASE
+cpu_use(){
+	# %CPU actual desde /proc/stat (2 muestras), sin depender de top
+	local _ u n s i w irq sirq st t1 t2 d1 d2
+	read -r _ u n s i w irq sirq st _ < /proc/stat 2>/dev/null
+	t1=$((u+n+s+i+w+irq+sirq+st)); d1=$((i+w))
+	sleep 0.1
+	read -r _ u n s i w irq sirq st _ < /proc/stat 2>/dev/null
+	t2=$((u+n+s+i+w+irq+sirq+st)); d2=$((i+w))
+	awk -v t=$((t2-t1)) -v x=$((d2-d1)) 'BEGIN{ if(t>0) printf "%.1f%%", 100*(t-x)/t; else print "0.0%" }'
+}
+
 refresh_info(){
-	export _hora=$(printf '%(%H:%M:%S)T')
-	export _fecha=$(printf '%(%D)T')
-	export _usop=$(printf '%-1s' "$(top -bn1 | awk '/Cpu/ { cpu = "" 100 - $8 "%" }; END { print cpu }')")
-	export ram1=$(free -h | grep -i mem | awk {'print $2'})
-	export ram2=$(free -h | grep -i mem | awk {'print $4'})
-	export ram3=$(free -h | grep -i mem | awk {'print $3'})
-	export _usor=$(printf '%-8s' "$(free -m | awk 'NR==2{printf "%.2f%%", $3*100/$2 }')")
+ 	export _hora=$(printf '%(%H:%M:%S)T')
+ 	export _fecha=$(printf '%(%D)T')
+ 	export _usop=$(cpu_use)
+	local _r1 _r3 _r2
+	read -r _r1 _r3 _r2 < <(free -h | awk 'NR==2{print $2, $3, $4}')
+	export ram1="$_r1" ram2="$_r2" ram3="$_r3"
+ 	export _usor=$(printf '%-8s' "$(free -m | awk 'NR==2{printf "%.2f%%", $3*100/$2 }')")
+}
+
+banner_lol(){
+	# cachea el encabezado con lolcat (se regenera solo si cambia message.txt)
+	local mf=${ADM_tmp}/message.txt cf=${ADM_tmp}/.banner
+	if [[ ! -s $cf || $cf -ot $mf ]]; then
+		print_center -azu "=====>>>> $(<"$mf") <<<<=====" | lolcat > "$cf" 2>/dev/null
+	fi
+	cat "$cf"
 }
 
 [[ ! -e ${ADM_tmp}/message.txt ]] && echo "@Rufu99" > ${ADM_tmp}/message.txt
@@ -1130,26 +1161,27 @@ while :; do
 refresh_info
 clear
 #########VISUALIZACION DE MENU
+_style=$(<${ADM_tmp}/style)
 
-if [[ $(cat ${ADM_tmp}/style|grep -w "resel"|awk '{print $2}') = "1" ]] ; then
+if [[ "$_style" == *"resel 1"* ]] ; then
 	msg -bar
-	print_center -azu "=====>>>> $(cat ${ADM_tmp}/message.txt) <<<<====="|lolcat
+	banner_lol
 	msg -bar
 else
 	cabesera
 fi
 
-if [[ $(cat ${ADM_tmp}/style|grep -w "infsys"|awk '{print $2}') = "1" ]] ; then
+if [[ "$_style" == *"infsys 1"* ]] ; then
   info_sys
   msg -bar
 fi
 
-if [[ $(cat ${ADM_tmp}/style|grep -w "port"|awk '{print $2}') = "1" ]] ; then
+if [[ "$_style" == *"port 1"* ]] ; then
   mine_port
   msg -bar
 fi
 
-if [[ $(cat ${ADM_tmp}/style|grep -w "contador"|awk '{print $2}') = "1" ]] ; then
+if [[ "$_style" == *"contador 1"* ]] ; then
   contador
   msg -bar
 fi
