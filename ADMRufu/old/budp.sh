@@ -87,8 +87,30 @@ install(){
 		print_center -ama "INSTALADO BADVPN"
 		msg -bar
 		rm -rf ${ADM_src}/badvpn-master*
+
+		# FIX-RAPIDO: usar el binario precompilado del repo (segundos en vez de compilar)
+		if [[ $(uname -m) = "x86_64" ]]; then
+			msg -nazu " DESCARGANDO BINARIO..... "
+			for url in \
+				"https://raw.githubusercontent.com/vpsnet360/ADMRufu/main/ADMRufu/Utils/badvpn/badvpn-udpgw" \
+				"https://github.com/rudi9999/ADMRufu/raw/main/Utils/badvpn/badvpn-udpgw"; do
+				wget -q -T 20 -t 2 -O /usr/bin/badvpn-udpgw "$url" &>/dev/null && \
+				chmod +x /usr/bin/badvpn-udpgw && \
+				timeout 3 /usr/bin/badvpn-udpgw --help 2>&1 | grep -q "BadVPN" && break
+				rm -f /usr/bin/badvpn-udpgw
+			done
+			if [[ -x /usr/bin/badvpn-udpgw ]]; then
+				msg -verd "[OK]"
+			else
+				msg -verm2 "[fail]"
+				print_center -ama "Se compilara desde el codigo fuente (tarda mas)"
+			fi
+		fi
+
+		# Respaldo: compilar desde el codigo fuente (solo si no hay binario)
+		if [[ ! -x /usr/bin/badvpn-udpgw ]]; then
 		msg -nazu " INSTALADO DEPENDECIAS... "
-		if apt install cmake -y &>/dev/null; then
+		if apt install cmake make gcc -y &>/dev/null; then
 			msg -verd "[OK]"
 		else
 			del 1
@@ -99,7 +121,7 @@ install(){
 
         cd ${ADM_src}
         msg -nazu " DESCARGANDO BADVPN...... "
-        if wget https://github.com/rudi9999/ADMRufu/raw/main/Utils/badvpn/badvpn-master.zip &>/dev/null; then
+        if wget -q -T 20 -t 2 -O badvpn-master.zip https://github.com/rudi9999/ADMRufu/raw/main/Utils/badvpn/badvpn-master.zip &>/dev/null; then
             msg -verd "[OK]"
         else
         	clr
@@ -110,7 +132,7 @@ install(){
         fi
 
         msg -nazu " DESCOMPRIMIENDO......... "
-        if unzip badvpn-master.zip &>/dev/null; then
+        if unzip -o badvpn-master.zip &>/dev/null; then
             msg -verd "[OK]"
         else
         	clr
@@ -123,7 +145,7 @@ install(){
         msg -nazu " COMPILANDO BADVPN....... "
 
         cd badvpn-master
-        mkdir build
+        mkdir -p build
         cd build
 
         if cmake .. -DCMAKE_INSTALL_PREFIX="/" -DBUILD_NOTHING_BY_DEFAULT=1 -DBUILD_UDPGW=1 &>/dev/null ; then
@@ -137,7 +159,7 @@ install(){
         fi
 
         msg -nazu ' INSTALANDO.............. '
-        if make install &>/dev/null; then
+        if make -j$(nproc) install &>/dev/null; then
         	msg -verd "[OK]"
         else
         	clr
@@ -146,6 +168,8 @@ install(){
         	enter
         	return
         fi
+        [[ -x /bin/badvpn-udpgw && ! -e /usr/bin/badvpn-udpgw ]] && ln -sf /bin/badvpn-udpgw /usr/bin/badvpn-udpgw
+		fi
         clr
 
         msg -nazu ' INICIANDO............... '
