@@ -1,39 +1,66 @@
 #!/bin/bash
 
 cl_data(){
-	peer=$(wg)
-	data=$(cat /etc/wireguard/wg0.conf)
-	user=$(echo "$data"|grep '^# BEGIN_PEER'|cut -d ' ' -f3)
-	[[ -z $user ]] && print_center -ama "no hay clientes wireguard!" && return
-	all_line="$(msg -azu "N°")-$(msg -azu "USUARIO")-$(msg -verd "DOWNLOAD")-$(msg -verm2 "UPLOAD")-$(msg -ama "LAST")-$(msg -azu "DAIS")\n"
-	n='0'
-	for i in `echo "${user}"`; do
+	local peer i n dias EXPTIME ext hora dow up E
+	local -a ORDER=() _f=()
+	local -A WG_VAL=() WG_PUB=() HORA=() DOW=() UP=() ECACHE=()
+	local l cur name valid cpk hkey
+
+	while IFS= read -r l; do
+		case $l in
+			"# BEGIN_PEER "*) name=${l#\# BEGIN_PEER }; name=${name%% *}; valid=${l##* }; WG_VAL[$name]=$valid; ORDER+=("$name"); cur=$name;;
+			"PublicKey "*) [[ -n "$cur" ]] && WG_PUB[$cur]=${l##* };;
+		esac
+	done < /etc/wireguard/wg0.conf
+
+	[[ ${#ORDER[@]} -eq 0 ]] && print_center -ama "no hay clientes wireguard!" && return
+
+	peer=$(wg 2>/dev/null)
+	if [[ -n "$peer" ]]; then
+		cpk=""; hkey=""
+		while IFS= read -r l; do
+			if [[ "$l" == "peer: "* ]]; then
+				cpk=${l#peer: }; hkey=""
+			elif [[ "$l" == *"latest handshake:"* ]]; then
+				_f=(); read -ra _f <<< "$l"
+				hkey="${_f[2]}"
+				[[ -n "${_f[4]}" ]] && hkey+=":${_f[4]}"
+				[[ -n "${_f[6]}" ]] && hkey+=":${_f[6]}"
+			elif [[ "$l" == *"transfer:"* ]]; then
+				_f=(); read -ra _f <<< "$l"
+				if [[ -n "$cpk" ]]; then
+					HORA[$cpk]=${hkey:-00:00:00}
+					UP[$cpk]="${_f[1]}${_f[2]}"
+					DOW[$cpk]="${_f[4]}${_f[5]}"
+				fi
+			fi
+		done <<< "$peer"
+	fi
+
+	local R=$'\e[0m' V Z BL A M2 _t now
+	_t=$(msg -verd "");  V="${_t%$R}"
+	_t=$(msg -azu "");   Z="${_t%$R}"
+	_t=$(msg -blu "");   BL="${_t%$R}"
+	_t=$(msg -ama "");   A="${_t%$R}"
+	_t=$(msg -verm2 ""); M2="${_t%$R}"
+
+	now=$(date +%s)
+
+	local line="${Z}N°${R}-${Z}USUARIO${R}-${V}DOWNLOAD${R}-${M2}UPLOAD${R}-${A}LAST${R}-${Z}DAIS${R}\n"
+	n=0
+	for i in "${ORDER[@]}"; do
 		let n++
-		dias=$(echo "$data"|grep -w "$i"|cut -d ' ' -f4)
-		EXPTIME="$(($(($(date '+%s' -d "${dias}") - $(date +%s))) / 86400))"
-		if [[ $EXPTIME -lt 0 ]]; then
-			ext=$(msg -verm2 "[EXP]")
-		else
-			ext=$(msg -verd "[$EXPTIME]")
-		fi
-		PublicKey=$(echo "$data"|sed -n "/^# BEGIN_PEER $i/,/^# END_PEER $i/p"|grep 'PublicKey'|cut -d ' ' -f3)
-		time=$(echo "$peer"|grep "$PublicKey" -A 5|grep -w 'latest handshake')
-		if [[ ! -z $time ]]; then
-			hora=$(echo $time|cut -d ' ' -f3,5,7|sed 's/ /:/g')
-		else
-			hora='00:00:00'
-		fi
-		consumo=$(echo "$peer"|grep "$PublicKey" -A 5|grep -w 'transfer')
-		if [[ ! -z $consumo ]]; then
-			up=$(echo $consumo|cut -d ' ' -f2,3|sed 's/ //g')
-			dow=$(echo $consumo|cut -d ' ' -f5,6|sed 's/ //g')
-		else
-			dow='00.00KiB'
-			up='00.00KiB'
-		fi
-		all_line+="$(msg -verd "$n)")-$(msg -azu "$i")-$(msg -blu "$dow")-$(msg -blu "$up")-$(msg -ama "$hora")-$ext\n"
+		dias="${WG_VAL[$i]}"
+		if [[ -n "${ECACHE[$dias]}" ]]; then E=${ECACHE[$dias]}; else E=$(date '+%s' -d "$dias"); ECACHE[$dias]=$E; fi
+		EXPTIME=$(( (E - now) / 86400 ))
+		if [[ $EXPTIME -lt 0 ]]; then ext="${M2}[EXP]${R}"; else ext="${V}[$EXPTIME]${R}"; fi
+		cpk="${WG_PUB[$i]}"
+		hora="${HORA[$cpk]:-00:00:00}"
+		dow="${DOW[$cpk]:-00.00KiB}"
+		up="${UP[$cpk]:-00.00KiB}"
+		line+="${V}${n})${R}-${Z}${i}${R}-${BL}${dow}${R}-${BL}${up}${R}-${A}${hora}${R}-${ext}\n"
 	done
-	echo -e "$all_line"|column -t -s '-'
+	printf '%b' "$line" | column -t -s '-'
 }
 
 new_wg(){

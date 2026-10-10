@@ -19,57 +19,109 @@ err_fun(){
 }
 
 data_user(){
-	cat_users=$(cat "/etc/passwd"|grep 'home'|grep 'false'|grep -v 'syslog'|grep -v '::/'|grep -v 'hwid\|token'|sort)
-	[[ -z "$(echo "${cat_users}"|head -1)" ]] && print_center -verm2 "NO HAY USUARIOS SSH REGISTRADOS" && return 1
-	dat_us=$(printf '%-13s%-14s%-10s%-4s%-6s%s' 'Usuario' 'Contraseña' 'Fecha' 'Dia' 'Limit' 'Statu')
-	msg -azu "  $dat_us"
-	msg -bar
+	local tmpdir="${ADM_user:-/etc/ADMRufu/user}/userTMP/users"
+	local line u gecos pass f _t m
+	local -A S_STAT=() S_EXP=() P_LIMIT=() P_PASS=() TMPMIN=()
+	local -a USERLIST=() MON=()
 
-	i=1
+	local R=$'\e[0m' V M2 Z A bar bar3 dat_us
+	_t=$(msg -verd "");  V="${_t%$R}"
+	_t=$(msg -verm2 ""); M2="${_t%$R}"
+	_t=$(msg -azu "");   Z="${_t%$R}"
+	_t=$(msg -ama "");   A="${_t%$R}"
+	bar=$(msg -bar); bar3=$(msg -bar3)
 
-  while read line; do
-    u=$(echo "$line"|awk -F ':' '{print $1}')
+	for m in 1 2 3 4 5 6 7 8 9 10 11 12; do
+		MON[$((m-1))]=$(date -d "2001-$(printf '%02d' "$m")-01" +%b)
+	done
 
-    fecha=$(chage -l "$u"|sed -n '4p'|awk -F ': ' '{print $2}')
-    tmp_file="${ADM_user:-/etc/ADMRufu/user}/userTMP/users/$u"
-    [[ -f "$tmp_file" ]] && fecha="$(cat "$tmp_file")min"
-    sin_fecha='[X]'; [[ -f "$tmp_file" ]] && sin_fecha='[0]'
+	if [[ -r /etc/shadow ]]; then
+		while IFS=: read -r name p2 _ _ _ _ _ exp _; do
+			[[ "$p2" == \$* ]] && S_STAT[$name]="ULK" || S_STAT[$name]="LOK"
+			[[ -n "$exp" ]] && S_EXP[$name]="$exp"
+		done < /etc/shadow
+	fi
 
-    mes_dia=$(echo $fecha|awk -F ',' '{print $1}'|sed 's/ //g')
-    ano=$(echo $fecha|awk -F ', ' '{printf $2}'|cut -c 3-)
-    us=$(printf '%-12s' "$u")
+	if [[ -d "$tmpdir" ]]; then
+		for f in "$tmpdir"/*; do
+			[[ -f "$f" ]] && TMPMIN[${f##*/}]="$(<"$f")"
+		done
+	fi
 
-    pass=$(echo "$line"|awk -F ':' '{print $5}'|cut -d ',' -f2)
-    [[ "${#pass}" -gt '12' ]] && pass="Desconosida"
-    pass="$(printf '%-12s' "$pass")"
+	while IFS= read -r line; do
+		[[ "$line" == *home* ]] || continue
+		[[ "$line" == *false* ]] || continue
+		[[ "$line" == *syslog* ]] && continue
+		[[ "$line" == *::/* ]] && continue
+		u=${line%%:*}
+		IFS=: read -r _ _ _ _ gecos _ _ <<< "$line"
+		if [[ "$gecos" == *,* ]]; then
+			P_LIMIT[$u]=${gecos%%,*}; P_PASS[$u]=${gecos#*,}
+		else
+			P_LIMIT[$u]=$gecos; P_PASS[$u]=""
+		fi
+		USERLIST+=("$u")
+	done < <(sort /etc/passwd)
 
-    unset stat
-    if [[ $(passwd --status $u|cut -d ' ' -f2) = "P" ]]; then
-      stat="$(msg -verd "ULK")"
-    else
-      stat="$(msg -verm2 "LOK")"
-    fi
+	[[ ${#USERLIST[@]} -eq 0 ]] && print_center -verm2 "NO HAY USUARIOS SSH REGISTRADOS" && return 1
 
-    Limit=$(echo "$line"|awk -F ':' '{print $5}'|cut -d ',' -f1)
-    [[ "${#Limit}" = "1" ]] && Limit=$(printf '%2s%-4s' "$Limit") || Limit=$(printf '%-6s' "$Limit")
+	printf -v dat_us '%-13s%-14s%-10s%-4s%-6s%s' 'Usuario' 'Contraseña' 'Fecha' 'Dia' 'Limit' 'Statu'
+	printf '%s\n' "${Z}  ${dat_us}${R}"
+	printf '%s\n' "$bar"
 
-    echo -ne "$(msg -verd "$i")$(msg -verm2 "-")$(msg -azu "${us}") $(msg -azu "${pass}")"
-    if [[ $(echo $fecha|awk '{print $2}') = "" ]]; then
-      exp="$(printf '%8s%-2s' "$sin_fecha")"
-      exp+="$(printf '%-6s' "$sin_fecha")"
-      echo " $(msg -verm2 "$fecha")$(msg -verd "$exp")$(echo -e "$stat")" 
-    else
-      if [[ $(date +%s) -gt $(date '+%s' -d "${fecha}") ]]; then
-        exp="$(printf '%-5s' "Exp")"
-        echo " $(msg -verm2 "$mes_dia/$ano")  $(msg -verm2 "$exp")$(msg -ama "$Limit")$(echo -e "$stat")"
-      else
-        EXPTIME="$(($(($(date '+%s' -d "${fecha}") - $(date +%s))) / 86400))"
-        [[ "${#EXPTIME}" = "1" ]] && exp="$(printf '%2s%-3s' "$EXPTIME")" || exp="$(printf '%-5s' "$EXPTIME")"
-        echo " $(msg -verm2 "$mes_dia/$ano")  $(msg -verd "$exp")$(msg -ama "$Limit")$(echo -e "$stat")"
-      fi
-    fi
-    let i++
-  done <<< "$cat_users"
+	local i=1 now z era doe yoe yy doy mp dd mm
+	now=$(date +%s)
+	for u in "${USERLIST[@]}"; do
+		local fecha epoch mes_dia ano exp EXPTIME sin_fecha stat
+		if [[ -n "${TMPMIN[$u]+set}" ]]; then
+			fecha="${TMPMIN[$u]}min"; sin_fecha='[0]'; epoch=""
+		elif [[ -n "${S_EXP[$u]+set}" ]]; then
+			sin_fecha='[X]'
+			z=$(( S_EXP[$u] + 719468 ))
+			era=$(( z / 146097 ))
+			doe=$(( z - era*146097 ))
+			yoe=$(( (doe - doe/1460 + doe/36524 - doe/146096) / 365 ))
+			yy=$(( yoe + era*400 ))
+			doy=$(( doe - (365*yoe + yoe/4 - yoe/100) ))
+			mp=$(( (5*doy + 2)/153 ))
+			dd=$(( doy - (153*mp+2)/5 + 1 ))
+			mm=$(( mp < 10 ? mp+3 : mp-9 ))
+			(( mm <= 2 )) && yy=$((yy+1))
+			printf -v fecha '%s %02d, %d' "${MON[$((mm-1))]}" "$dd" "$yy"
+			epoch=$(( S_EXP[$u] * 86400 ))
+		else
+			sin_fecha='[X]'; epoch=""; fecha="never"
+		fi
+
+		printf -v us '%-12s' "$u"
+		pass="${P_PASS[$u]}"
+		[[ "${#pass}" -gt '12' ]] && pass="Desconosida"
+		printf -v pass '%-12s' "$pass"
+
+		if [[ "${S_STAT[$u]:-LOK}" == "ULK" ]]; then stat="${V}ULK${R}"; else stat="${M2}LOK${R}"; fi
+
+		Limit="${P_LIMIT[$u]}"
+		if [[ "${#Limit}" = "1" ]]; then printf -v Limit '%2s%-4s' "$Limit"; else printf -v Limit '%-6s' "$Limit"; fi
+
+		printf '%s' "${V}${i}${R}${M2}-${R}${Z}${us}${R} ${Z}${pass}${R}"
+		if [[ -z "$epoch" ]]; then
+			printf -v exp '%8s%-2s' "$sin_fecha"
+			printf -v exp '%s%-6s' "$exp" "$sin_fecha"
+			printf ' %s\n' "${M2}${fecha}${R}${V}${exp}${R}${stat}"
+		else
+			mes_dia="${fecha%%,*}"; mes_dia="${mes_dia// /}"
+			ano="${fecha##*, }"; ano="${ano:2}"
+			if [[ "$now" -gt "$epoch" ]]; then
+				printf -v exp '%-5s' "Exp"
+				printf ' %s\n' "${M2}${mes_dia}/${ano}${R}  ${M2}${exp}${R}${A}${Limit}${R}${stat}"
+			else
+				EXPTIME="$(( (epoch - now) / 86400 ))"
+				if [[ "${#EXPTIME}" = "1" ]]; then printf -v exp '%2s%-3s' "$EXPTIME"; else printf -v exp '%-5s' "$EXPTIME"; fi
+				printf ' %s\n' "${M2}${mes_dia}/${ano}${R}  ${V}${exp}${R}${A}${Limit}${R}${stat}"
+			fi
+		fi
+		let i++
+	done
 }
 
 #======CREAR NUEVO USUARIO===========

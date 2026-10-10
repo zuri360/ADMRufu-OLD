@@ -22,64 +22,115 @@ err_fun(){
 }
 
 data_user(){
-  cat_users=$(cat "/etc/passwd"|grep 'home'|grep 'false'|grep -v 'syslog'|grep -v '::/'|sort)
-  [[ -z "$(echo "${cat_users}"|awk -F ':' '{print $5}'|cut -d ',' -f1|grep -w 'hwid'|head -1)" ]] && print_center -verm2 "NO HAY CLIENTES HWID REGISTRADOS" && return 1
-	dat_us=$(printf '%-20s%-12s%-8s%s' 'Cliente' 'Fecha' 'Dias' 'Statu')
-	msg -azu "  N°  $dat_us"
-	msg -bar
+	local tmpdir="${ADM_user:-/etc/ADMRufu/user}/userTMP/users"
+	local line u gecos pass f _t m
+	local -A S_STAT=() S_EXP=() P_TAG=() P_VAL=() TMPMIN=()
+	local -a USERLIST=() MON=()
 
-	i=1
-	for u in `echo "${cat_users}"|awk -F ':' '{print $1}'`; do
+	local R=$'\e[0m' V M2 Z A bar bar3 dat_us
+	_t=$(msg -verd "");  V="${_t%$R}"
+	_t=$(msg -verm2 ""); M2="${_t%$R}"
+	_t=$(msg -azu "");   Z="${_t%$R}"
+	_t=$(msg -ama "");   A="${_t%$R}"
+	bar=$(msg -bar); bar3=$(msg -bar3)
 
-    fix_hwid_token=$(echo "${cat_users}"|grep -w "$u"|awk -F ':' '{print $5}'|cut -d ',' -f1) && [[ "${fix_hwid_token}" != @(hwid) ]] && continue
+	for m in 1 2 3 4 5 6 7 8 9 10 11 12; do
+		MON[$((m-1))]=$(date -d "2001-$(printf '%02d' "$m")-01" +%b)
+	done
 
-		fecha=$(chage -l "$u"|sed -n '4p'|awk -F ': ' '{print $2}')
-		tmp_file="${ADM_user:-/etc/ADMRufu/user}/userTMP/users/$u"
-		[[ -f "$tmp_file" ]] && fecha="$(cat "$tmp_file")min"
-		sin_fecha='[X]'; [[ -f "$tmp_file" ]] && sin_fecha='[0]'
+	if [[ -r /etc/shadow ]]; then
+		while IFS=: read -r name p2 _ _ _ _ _ exp _; do
+			[[ "$p2" == \$* ]] && S_STAT[$name]="ULK" || S_STAT[$name]="LOK"
+			[[ -n "$exp" ]] && S_EXP[$name]="$exp"
+		done < /etc/shadow
+	fi
 
-		mes_dia=$(echo $fecha|awk -F ',' '{print $1}'|sed 's/ //g')
-		ano=$(echo $fecha|awk -F ', ' '{printf $2}'|cut -c 3-)
-		us=$(printf '%-12s' "$u")
+	if [[ -d "$tmpdir" ]]; then
+		for f in "$tmpdir"/*; do
+			[[ -f "$f" ]] && TMPMIN[${f##*/}]="$(<"$f")"
+		done
+	fi
 
-		pass=$(cat "/etc/passwd"|grep -w "$u"|awk -F ':' '{print $5}'|cut -d ',' -f2)
-		[[ "${#pass}" -gt '12' ]] && pass="Desconosida"
-		pass="$(printf '%-19s' "$pass")"
+	while IFS= read -r line; do
+		[[ "$line" == *home* ]] || continue
+		[[ "$line" == *false* ]] || continue
+		[[ "$line" == *syslog* ]] && continue
+		[[ "$line" == *::/* ]] && continue
+		u=${line%%:*}
+		IFS=: read -r _ _ _ _ gecos _ _ <<< "$line"
+		P_TAG[$u]=${gecos%%,*}
+		if [[ "$gecos" == *,* ]]; then P_VAL[$u]=${gecos#*,}; else P_VAL[$u]=""; fi
+		USERLIST+=("$u")
+	done < <(sort /etc/passwd)
 
-		unset stat
-		if [[ $(passwd --status $u|cut -d ' ' -f2) = "P" ]]; then
-			stat="$(msg -verd "ULK")"
+	local found=0
+	for u in "${USERLIST[@]}"; do [[ "${P_TAG[$u]}" == "hwid" ]] && found=1 && break; done
+	[[ $found -eq 0 ]] && print_center -verm2 "NO HAY CLIENTES HWID REGISTRADOS" && return 1
+
+	printf -v dat_us '%-20s%-12s%-8s%s' 'Cliente' 'Fecha' 'Dias' 'Statu'
+	printf '%s\n' "${Z}  N°  ${dat_us}${R}"
+	printf '%s\n' "$bar"
+
+	local i=1 now z era doe yoe yy doy mp dd mm
+	now=$(date +%s)
+	for u in "${USERLIST[@]}"; do
+		[[ "${P_TAG[$u]}" != "hwid" ]] && continue
+		local fecha epoch mes_dia ano exp EXPTIME sin_fecha stat
+		if [[ -n "${TMPMIN[$u]+set}" ]]; then
+			fecha="${TMPMIN[$u]}min"; sin_fecha='[0]'; epoch=""
+		elif [[ -n "${S_EXP[$u]+set}" ]]; then
+			sin_fecha='[X]'
+			z=$(( S_EXP[$u] + 719468 ))
+			era=$(( z / 146097 ))
+			doe=$(( z - era*146097 ))
+			yoe=$(( (doe - doe/1460 + doe/36524 - doe/146096) / 365 ))
+			yy=$(( yoe + era*400 ))
+			doy=$(( doe - (365*yoe + yoe/4 - yoe/100) ))
+			mp=$(( (5*doy + 2)/153 ))
+			dd=$(( doy - (153*mp+2)/5 + 1 ))
+			mm=$(( mp < 10 ? mp+3 : mp-9 ))
+			(( mm <= 2 )) && yy=$((yy+1))
+			printf -v fecha '%s %02d, %d' "${MON[$((mm-1))]}" "$dd" "$yy"
+			epoch=$(( S_EXP[$u] * 86400 ))
 		else
-			stat="$(msg -verm2 "LOK")"
+			sin_fecha='[X]'; epoch=""; fecha="never"
 		fi
 
-		echo -ne "  $(msg -verd "$i)")$(msg -verm2 "-") $(msg -azu "${pass}")"
-		if [[ $(echo $fecha|awk '{print $2}') = "" ]]; then
-			exp="$(printf '%8s%-2s' "$sin_fecha")"
-			exp+="$(printf '%-6s' "$sin_fecha")"
-			echo " $(msg -verm2 "$fecha")$(msg -verd "$exp")$(echo -e "$stat")"	
+		printf -v us '%-12s' "$u"
+		pass="${P_VAL[$u]}"
+		[[ "${#pass}" -gt '12' ]] && pass="Desconosida"
+		printf -v pass '%-19s' "$pass"
+
+		if [[ "${S_STAT[$u]:-LOK}" == "ULK" ]]; then stat="${V}ULK${R}"; else stat="${M2}LOK${R}"; fi
+
+		printf '%s' "  ${V}${i})${R}${M2}-${R} ${Z}${pass}${R}"
+		if [[ -z "$epoch" ]]; then
+			printf -v exp '%8s%-2s' "$sin_fecha"
+			printf -v exp '%s%-6s' "$exp" "$sin_fecha"
+			printf ' %s\n' "${M2}${fecha}${R}${V}${exp}${R}${stat}"
 		else
-			if [[ $(date +%s) -gt $(date '+%s' -d "${fecha}") ]]; then
-				exp="$(printf '%-5s' "Exp")"
-				echo " $(msg -verm2 "$mes_dia/$ano")  $(msg -verm2 "$exp")$(echo -e "$stat")"
+			mes_dia="${fecha%%,*}"; mes_dia="${mes_dia// /}"
+			ano="${fecha##*, }"; ano="${ano:2}"
+			if [[ "$now" -gt "$epoch" ]]; then
+				printf -v exp '%-5s' "Exp"
+				printf ' %s\n' "${M2}${mes_dia}/${ano}${R}  ${M2}${exp}${R}${stat}"
 			else
-				EXPTIME="$(($(($(date '+%s' -d "${fecha}") - $(date +%s))) / 86400))"
+				EXPTIME="$(( (epoch - now) / 86400 ))"
 				if [[ "${#EXPTIME}" = "1" ]]; then
-            exp="$(printf '%6s%-7s' "$EXPTIME")"
-        elif [[ "${#EXPTIME}" = "2" ]]; then
-            exp="$(printf '%7s%-6s' "$EXPTIME")"
-        else
-            exp="$(printf '%7s%-5s' "$EXPTIME")"
-        fi
-				echo " $(msg -verm2 "$mes_dia/$ano")$(msg -verd "$exp")$(echo -e "$stat")"
+					printf -v exp '%6s%-7s' "$EXPTIME"
+				elif [[ "${#EXPTIME}" = "2" ]]; then
+					printf -v exp '%7s%-6s' "$EXPTIME"
+				else
+					printf -v exp '%7s%-5s' "$EXPTIME"
+				fi
+				printf ' %s\n' "${M2}${mes_dia}/${ano}${R}${V}${exp}${R}${stat}"
 			fi
 		fi
-    echo -e "      $(msg -ama "HWID:") $(msg -azu "${us}")"
-    msg -bar3
+		printf '      %s\n' "${A}HWID:${R} ${Z}${us}${R}"
+		printf '%s\n' "$bar3"
 		let i++
 	done
-  tput cuu1 && tput dl1
-
+	tput cuu1 && tput dl1
 }
 
 #======CREAR NUEVO USUARIO===========
