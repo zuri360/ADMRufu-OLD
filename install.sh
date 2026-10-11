@@ -63,7 +63,7 @@ locale -a 2>/dev/null | grep -qiE '^(c|en_us)\.utf-?8$' && export LC_ALL=C.UTF-8
 
 # ======================= DESCARGA DESDE TU REPOSITORIO =======================
 # Archivos de ADMRufu/old que usa el menu (igual que el install original)
-REPO_BASE="https://raw.githubusercontent.com/vpsnet360/ADMRufu/main/ADMRufu"
+REPO_BASE="https://raw.githubusercontent.com/zuri360/ADMRufu/main/ADMRufu"
 REPO_OLD="${REPO_BASE}/old"
 
 ARCHIVOS_OLD="bashrc budp.sh cert.sh chekup.sh chekuser.sh confDNS.sh domain.sh
