@@ -186,7 +186,7 @@ descargar_old(){
   clear
   msg -bar
   print_center -ama "DESCARGANDO ARCHIVOS DEL PANEL"
-  print_center -azu "github.com/vpsnet360/ADMRufu"
+  print_center -azu "github.com/zuri360/ADMRufu"
   msg -bar
   for f in "${falta[@]}"; do
     msg -nazu " $(printf '%-18s' "$f")"
